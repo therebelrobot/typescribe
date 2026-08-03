@@ -1,0 +1,33 @@
+{
+  "name": "typescribe",
+  "version": "0.1.0",
+  "description": "Transcribe an audio file with a local Whisper model and emit a .docx whose tracked-change history reproduces the transcript being typed in real time against the audio.",
+  "license": "Unlicense",
+  "author": "Aster (@therebelrobot)",
+  "type": "module",
+  "bin": {
+    "typescribe": "./src/cli.ts"
+  },
+  "engines": {
+    "node": ">=22.6.0"
+  },
+  "scripts": {
+    "start": "node --experimental-strip-types src/cli.ts",
+    "dev": "tsx src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "esbuild src/cli.ts --bundle --platform=node --format=esm --target=node22 --outfile=dist/typescribe.mjs --banner:js='#!/usr/bin/env node'",
+    "build:sea": "node --experimental-strip-types scripts/build-sea.ts",
+    "build:sea:strip": "node --experimental-strip-types scripts/build-sea.ts --strip",
+    "release:patch": "npm version patch -m \"chore: release v%s\" && git push && git push --tags",
+    "release:minor": "npm version minor -m \"chore: release v%s\" && git push && git push --tags",
+    "release:major": "npm version major -m \"chore: release v%s\" && git push && git push --tags",
+    "release:tags": "git tag --sort=-v:refname | grep '^v'"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.2",
+    "esbuild": "^0.28.1",
+    "postject": "^1.0.0-alpha.6",
+    "tsx": "^4.23.5",
+    "typescript": "^7.0.2"
+  }
+}

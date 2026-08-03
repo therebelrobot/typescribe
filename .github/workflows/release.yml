@@ -1,0 +1,89 @@
+name: release
+
+# Builds a single-file executable on each OS natively. Native builds avoid
+# having to fetch and verify a foreign Node binary, and macOS signing only
+# works on a macOS runner anyway.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            artifact: typescribe-linux-x64
+            binary: dist/typescribe
+            strip: "--strip"
+          - os: macos-latest
+            platform: darwin
+            artifact: typescribe-macos-arm64
+            binary: dist/typescribe
+            strip: "--strip"
+          - os: windows-latest
+            platform: win32
+            artifact: typescribe-windows-x64
+            binary: dist/typescribe.exe
+            strip: ""
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - run: npm ci
+
+      - run: npm run typecheck
+
+      - name: Build executable
+        run: node --experimental-strip-types scripts/build-sea.ts --platform ${{ matrix.platform }} ${{ matrix.strip }}
+
+      - name: Smoke test
+        shell: bash
+        run: |
+          "${{ matrix.binary }}" --version
+          "${{ matrix.binary }}" --transcript fixtures/whisper-python.json --dry-run
+          "${{ matrix.binary }}" --transcript fixtures/whisper-python.json -o smoke.docx
+          test -s smoke.docx
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.binary }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Rename and checksum
+        run: |
+          mkdir -p out
+          for dir in artifacts/*/; do
+            name=$(basename "$dir")
+            file=$(find "$dir" -type f | head -1)
+            case "$name" in
+              *windows*) cp "$file" "out/$name.exe" ;;
+              *)         cp "$file" "out/$name" ;;
+            esac
+          done
+          cd out && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: out/*

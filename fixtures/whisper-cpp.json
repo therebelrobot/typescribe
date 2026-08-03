@@ -1,0 +1,41 @@
+{
+  "systeminfo": "AVX = 1 | AVX2 = 1 | NEON = 0 |",
+  "model": { "type": "base.en", "multilingual": false },
+  "params": { "model": "models/ggml-base.en.bin", "language": "en" },
+  "result": { "language": "en" },
+  "transcription": [
+    {
+      "timestamps": { "from": "00:00:00,000", "to": "00:00:03,120" },
+      "offsets": { "from": 0, "to": 3120 },
+      "text": " Testing the enclosure fan.",
+      "tokens": [
+        { "text": "[_BEG_]", "offsets": { "from": 0, "to": 0 } },
+        { "text": " Testing", "offsets": { "from": 320, "to": 900 } },
+        { "text": " the", "offsets": { "from": 920, "to": 1080 } },
+        { "text": " enc", "offsets": { "from": 1100, "to": 1340 } },
+        { "text": "los", "offsets": { "from": 1340, "to": 1520 } },
+        { "text": "ure", "offsets": { "from": 1520, "to": 1700 } },
+        { "text": " fan", "offsets": { "from": 1720, "to": 2100 } },
+        { "text": ".", "offsets": { "from": 2100, "to": 2160 } }
+      ]
+    },
+    {
+      "timestamps": { "from": "00:00:05,600", "to": "00:00:09,400" },
+      "offsets": { "from": 5600, "to": 9400 },
+      "text": " It is much quieter at forty percent duty cycle.",
+      "tokens": [
+        { "text": " It", "offsets": { "from": 5600, "to": 5760 } },
+        { "text": " is", "offsets": { "from": 5780, "to": 5900 } },
+        { "text": " much", "offsets": { "from": 5920, "to": 6180 } },
+        { "text": " quie", "offsets": { "from": 6200, "to": 6440 } },
+        { "text": "ter", "offsets": { "from": 6440, "to": 6620 } },
+        { "text": " at", "offsets": { "from": 6640, "to": 6760 } },
+        { "text": " forty", "offsets": { "from": 6780, "to": 7120 } },
+        { "text": " percent", "offsets": { "from": 7140, "to": 7580 } },
+        { "text": " duty", "offsets": { "from": 7600, "to": 7900 } },
+        { "text": " cycle", "offsets": { "from": 7920, "to": 8300 } },
+        { "text": ".", "offsets": { "from": 8300, "to": 8360 } }
+      ]
+    }
+  ]
+}

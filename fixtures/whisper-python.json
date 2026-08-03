@@ -1,0 +1,55 @@
+{
+  "text": " Okay, recording now. The soil sensor array is reporting moisture at thirty-one percent. That is lower than yesterday. I want to check the drip line before we scale this to the north bed.",
+  "language": "en",
+  "segments": [
+    {
+      "id": 0,
+      "start": 0.0,
+      "end": 4.8,
+      "text": " Okay, recording now. The soil sensor array is reporting moisture at thirty-one percent.",
+      "words": [
+        { "word": " Okay,", "start": 0.32, "end": 0.86, "probability": 0.98 },
+        { "word": " recording", "start": 0.9, "end": 1.42, "probability": 0.97 },
+        { "word": " now.", "start": 1.44, "end": 1.88, "probability": 0.99 },
+        { "word": " The", "start": 2.4, "end": 2.55, "probability": 0.99 },
+        { "word": " soil", "start": 2.56, "end": 2.84, "probability": 0.98 },
+        { "word": " sensor", "start": 2.86, "end": 3.24, "probability": 0.97 },
+        { "word": " array", "start": 3.26, "end": 3.6, "probability": 0.96 },
+        { "word": " is", "start": 3.62, "end": 3.74, "probability": 0.99 },
+        { "word": " reporting", "start": 3.76, "end": 4.18, "probability": 0.95 },
+        { "word": " moisture", "start": 4.2, "end": 4.62, "probability": 0.96 },
+        { "word": " at", "start": 4.64, "end": 4.74, "probability": 0.99 },
+        { "word": " thirty-one", "start": 4.76, "end": 5.3, "probability": 0.93 },
+        { "word": " percent.", "start": 5.32, "end": 5.86, "probability": 0.98 }
+      ]
+    },
+    {
+      "id": 1,
+      "start": 8.4,
+      "end": 14.9,
+      "text": " That is lower than yesterday. I want to check the drip line before we scale this to the north bed.",
+      "words": [
+        { "word": " That", "start": 8.42, "end": 8.66, "probability": 0.99 },
+        { "word": " is", "start": 8.68, "end": 8.8, "probability": 0.99 },
+        { "word": " lower", "start": 8.82, "end": 9.14, "probability": 0.98 },
+        { "word": " than", "start": 9.16, "end": 9.34, "probability": 0.99 },
+        { "word": " yesterday.", "start": 9.36, "end": 10.02, "probability": 0.98 },
+        { "word": " I", "start": 10.5, "end": 10.6, "probability": 0.99 },
+        { "word": " want", "start": 10.62, "end": 10.84, "probability": 0.99 },
+        { "word": " to", "start": 10.86, "end": 10.96, "probability": 0.99 },
+        { "word": " check", "start": 10.98, "end": 11.28, "probability": 0.98 },
+        { "word": " the", "start": 11.3, "end": 11.42, "probability": 0.99 },
+        { "word": " drip", "start": 11.44, "end": 11.72, "probability": 0.97 },
+        { "word": " line", "start": 11.74, "end": 12.02, "probability": 0.98 },
+        { "word": " before", "start": 12.04, "end": 12.4, "probability": 0.98 },
+        { "word": " we", "start": 12.42, "end": 12.54, "probability": 0.99 },
+        { "word": " scale", "start": 12.56, "end": 12.9, "probability": 0.97 },
+        { "word": " this", "start": 12.92, "end": 13.14, "probability": 0.99 },
+        { "word": " to", "start": 13.16, "end": 13.26, "probability": 0.99 },
+        { "word": " the", "start": 13.28, "end": 13.4, "probability": 0.99 },
+        { "word": " north", "start": 13.42, "end": 13.74, "probability": 0.97 },
+        { "word": " bed.", "start": 13.76, "end": 14.2, "probability": 0.98 }
+      ]
+    }
+  ]
+}
