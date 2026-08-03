@@ -1,6 +1,6 @@
 {
   "name": "typescribe",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Transcribe an audio file with a local Whisper model and emit a .docx whose tracked-change history reproduces the transcript being typed in real time against the audio.",
   "license": "Unlicense",
   "author": "Aster (@therebelrobot)",
