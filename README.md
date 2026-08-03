@@ -51,6 +51,16 @@ It uses Node's built-in Single Executable Application support: esbuild bundles
 injects it into a copy of a Node binary. The only third-party build tools are
 esbuild and postject, both devDependencies; nothing is fetched at runtime.
 
+Both are called through their JavaScript APIs rather than their CLIs. Shelling
+out to `npx` fails on Windows, where the shim is `npx.cmd` and `spawnSync` will
+not resolve a `.cmd` without a shell — and enabling `shell: true` to fix that
+would put file paths through cmd.exe quoting. The remaining subprocesses
+(`strip`, `codesign`, `signtool`) are all optional and platform-guarded: a
+machine without them warns and continues.
+
+`npm ci` requires `package-lock.json` to be committed. The workflow falls back
+to `npm install` if it is missing.
+
 **All three platforms at once:** push a `v*` tag and
 `.github/workflows/release.yml` builds natively on ubuntu, macos, and windows
 runners, smoke-tests each binary, and attaches them to the release with

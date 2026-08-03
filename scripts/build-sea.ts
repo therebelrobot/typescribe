@@ -14,6 +14,12 @@
  * Cross-building works by pointing --node at a Node binary for the target
  * platform. Everything else about the process is platform-independent.
  *
+ * esbuild and postject are called through their JavaScript APIs rather than
+ * their CLIs. Shelling out to `npx` fails on Windows, where the shim is
+ * `npx.cmd` and spawnSync will not resolve a `.cmd` without a shell — and
+ * turning on `shell: true` to fix that would put file paths through cmd.exe
+ * quoting. Importing the APIs sidesteps both and is faster.
+ *
  * Usage:
  *   node --experimental-strip-types scripts/build-sea.ts
  *   node --experimental-strip-types scripts/build-sea.ts \
@@ -21,7 +27,7 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { chmodSync, copyFileSync, existsSync, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 type TargetPlatform = "linux" | "darwin" | "win32";
@@ -95,6 +101,21 @@ against SHASUMS256.txt, and point --node at the extracted binary. Building
 natively on each OS in CI avoids this entirely — see .github/workflows/release.yml.
 `;
 
+/**
+ * devDependencies are needed to build but not to run, so a missing one means
+ * `npm ci` has not happened rather than anything being broken.
+ */
+async function importBuildDependency<T>(name: string): Promise<T> {
+  try {
+    return (await import(name)) as unknown as T;
+  } catch {
+    throw new Error(
+      `Build dependency "${name}" is not installed.\n` +
+        `Run \`npm ci\` first. It is a devDependency — the built executable does not need it.`,
+    );
+  }
+}
+
 function run(command: string, args: string[], label: string): void {
   const result = spawnSync(command, args, { stdio: "inherit" });
   if (result.error) {
@@ -105,7 +126,17 @@ function run(command: string, args: string[], label: string): void {
   }
 }
 
-function build(options: BuildOptions): void {
+/** postject ships no type declarations. */
+interface PostjectApi {
+  inject(
+    filename: string,
+    resourceName: string,
+    resourceData: Buffer,
+    options?: { sentinelFuse?: string; machoSegmentName?: string; overwrite?: boolean },
+  ): Promise<void>;
+}
+
+async function build(options: BuildOptions): Promise<void> {
   const outDir = resolve(options.outDir);
   mkdirSync(outDir, { recursive: true });
 
@@ -120,19 +151,20 @@ function build(options: BuildOptions): void {
 
   // 1. Bundle. CommonJS is required: SEA rejects an ESM entry script.
   step("bundling");
-  run(
-    "npx",
-    [
-      "esbuild", "src/cli.ts",
-      "--bundle",
-      "--platform=node",
-      "--format=cjs",
-      "--target=node22",
-      "--minify",
-      `--outfile=${bundle}`,
-    ],
-    "bundle",
-  );
+  const esbuild = await importBuildDependency<typeof import("esbuild")>("esbuild");
+  const result = await esbuild.build({
+    entryPoints: ["src/cli.ts"],
+    bundle: true,
+    platform: "node",
+    format: "cjs",
+    target: "node22",
+    minify: true,
+    outfile: bundle,
+    logLevel: "warning",
+  });
+  if (result.errors.length) {
+    throw new Error(`bundle: esbuild reported ${result.errors.length} error(s)`);
+  }
 
   // 2. Preparation blob.
   step("building SEA blob");
@@ -153,27 +185,56 @@ function build(options: BuildOptions): void {
       warn("--strip skipped: not applicable to a Windows carrier");
     } else {
       step("stripping carrier");
-      run("strip", [exe], "strip");
+      // Size optimization only — a machine without binutils should still build.
+      const stripped = spawnSync("strip", [exe], { stdio: "inherit" });
+      if (stripped.error || stripped.status !== 0) {
+        warn("strip unavailable or failed — continuing with an unstripped carrier");
+      }
     }
   }
 
-  // macOS refuses to load a Mach-O binary whose signature no longer matches,
-  // and injection changes the bytes, so the old signature has to go first.
+  // Injection rewrites bytes, which invalidates any signature already on the
+  // carrier. Both signed platforms want the old one removed first.
   if (options.platform === "darwin") {
     step("removing existing signature");
     spawnSync("codesign", ["--remove-signature", exe], { stdio: "inherit" });
   }
+  if (options.platform === "win32") {
+    // Official Node builds for Windows are Authenticode-signed. Leaving a stale
+    // signature behind is not fatal — the binary still runs — but it makes
+    // SmartScreen noisier, so remove it when signtool is available.
+    step("removing existing signature");
+    const removed = spawnSync("signtool", ["remove", "/s", exe], { stdio: "ignore" });
+    if (removed.error || removed.status !== 0) {
+      warn("signtool unavailable or failed — continuing with a stale signature on the carrier");
+    }
+  }
 
   // 4. Inject.
   step("injecting blob");
-  const postjectArgs = [
-    "postject", exe, "NODE_SEA_BLOB", blob,
-    "--sentinel-fuse", FUSE,
-  ];
-  if (options.platform === "darwin") {
-    postjectArgs.push("--macho-segment-name", "NODE_SEA");
+  const postject = await importBuildDependency<PostjectApi>("postject");
+  // postject prints a "Can't find string offset for section name" line per ELF
+  // section it probes. They are noise on a successful build and drown out the
+  // real output in CI, so buffer them and only surface them if injection fails.
+  const noise: string[] = [];
+  const realWarn = console.warn;
+  const realLog = console.log;
+  console.warn = (...parts: unknown[]) => noise.push(parts.join(" "));
+  console.log = (...parts: unknown[]) => noise.push(parts.join(" "));
+  try {
+    await postject.inject(exe, "NODE_SEA_BLOB", readFileSync(blob), {
+      sentinelFuse: FUSE,
+      ...(options.platform === "darwin" ? { machoSegmentName: "NODE_SEA" } : {}),
+    });
+  } catch (error) {
+    console.warn = realWarn;
+    console.log = realLog;
+    for (const line of noise) process.stderr.write(`${line}\n`);
+    throw error;
+  } finally {
+    console.warn = realWarn;
+    console.log = realLog;
   }
-  run("npx", postjectArgs, "postject");
   chmodSync(exe, 0o755);
 
   // 5. Re-sign. Ad-hoc is enough for local use; ship a real Developer ID
@@ -204,9 +265,7 @@ function warn(message: string): void {
   process.stderr.write(`[build-sea] warning: ${message}\n`);
 }
 
-try {
-  build(parse(process.argv.slice(2)));
-} catch (error) {
+build(parse(process.argv.slice(2))).catch((error: unknown) => {
   process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
   process.exit(1);
-}
+});
