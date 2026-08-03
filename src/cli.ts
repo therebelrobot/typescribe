@@ -6,17 +6,43 @@
 
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { basename, extname, join, resolve } from "node:path";
-import { HELP, parseArgs, type CliOptions } from "./args.ts";
+import { HELP, SETUP_HELP, parseArgs, parseSetupArgs, type CliOptions } from "./args.ts";
 import { hasCommand, probeDuration } from "./audio.ts";
 import { defaultPythonModelDir, resolveBackend, transcribe } from "./backends.ts";
 import { parseTranscript, type Transcript } from "./transcript.ts";
 import { buildTypingPlan, formatClock, type TypingPlan } from "./typing.ts";
 import { buildDocx } from "./docx/build.ts";
+import { makeBundle, setup } from "./setup.ts";
+import { managedWhisperCli, readState, resolveHome, resolveModelPath } from "./paths.ts";
 
 const VERSION = "0.1.0";
 const GENERATOR = `typescribe ${VERSION}`;
 
-function main(argv: string[]): number {
+async function main(argv: string[]): Promise<number> {
+  // `setup` is the only subcommand; everything else is transcription flags.
+  if (argv[0] === "setup") {
+    let setupOptions;
+    try {
+      setupOptions = parseSetupArgs(argv.slice(1));
+    } catch (error) {
+      process.stderr.write(`${message(error)}\n`);
+      return 2;
+    }
+    if (setupOptions.help) {
+      process.stdout.write(SETUP_HELP);
+      return 0;
+    }
+    try {
+      if (setupOptions.bundle) {
+        return makeBundle(resolveHome(setupOptions.dir), setupOptions.bundle);
+      }
+      return await setup(setupOptions);
+    } catch (error) {
+      process.stderr.write(`${message(error)}\n`);
+      return 1;
+    }
+  }
+
   let options: CliOptions;
   try {
     options = parseArgs(argv);
@@ -75,6 +101,7 @@ function run(options: CliOptions): number {
       model: options.model,
       whisperBin: options.whisperBin,
       modelDir: options.modelDir,
+      home: resolveHome(options.dir),
       language: options.language,
       threads: options.threads,
       allowModelDownload: options.allowModelDownload,
@@ -167,7 +194,9 @@ function doctor(options: CliOptions): number {
     problems.push(label);
   };
 
+  const home = resolveHome(options.dir);
   log("typescribe offline check");
+  log(`  install directory  ${home}`);
   log("");
 
   const [major, minor] = process.versions.node.split(".").map(Number);
@@ -184,6 +213,7 @@ function doctor(options: CliOptions): number {
       model: options.model,
       whisperBin: options.whisperBin,
       modelDir: options.modelDir,
+      home: resolveHome(options.dir),
       language: options.language,
       threads: options.threads,
       allowModelDownload: options.allowModelDownload,
@@ -191,18 +221,20 @@ function doctor(options: CliOptions): number {
     });
     ok("backend", `${backend.name} (${backend.binary})`);
   } catch {
-    bad("backend", "no whisper.cpp or whisper CLI on PATH");
+    bad("backend", "not installed — run `typescribe setup`");
   }
 
   if (backend?.name === "whisper-cpp") {
-    if (options.model && existsSync(options.model)) {
-      ok("model", `${resolve(options.model)}`);
+    const resolved = resolveModelPath(home, options.model);
+    if (resolved) {
+      ok("model", resolved);
     } else {
-      bad("model", `not found: ${options.model || "(none given)"} — pass --model /path/ggml-*.bin`);
+      bad("model", `no model found — run \`typescribe setup\` or pass --model /path/ggml-*.bin`);
     }
   } else if (backend?.name === "whisper") {
     const dir = options.modelDir ?? defaultPythonModelDir();
-    const weights = join(dir, `${options.model}.pt`);
+    const modelName = options.model ?? "base.en";
+    const weights = join(dir, `${modelName}.pt`);
     if (existsSync(weights)) {
       ok("model", weights);
     } else {
@@ -223,7 +255,8 @@ function doctor(options: CliOptions): number {
 
   log("");
   if (problems.length) {
-    log(`Not ready: ${problems.join(", ")}. Fix these while connected; afterwards no network is needed.`);
+    log(`Not ready: ${problems.join(", ")}.`);
+    log(`Run \`typescribe setup\` once while connected; afterwards no network is needed.`);
     return 1;
   }
   log("Ready. A transcription run on this machine needs no network access.");
@@ -276,4 +309,12 @@ function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-process.exit(main(process.argv.slice(2)));
+// Not `await main(...)`: the SEA build bundles to CommonJS, which has no
+// top-level await.
+main(process.argv.slice(2)).then(
+  (code) => process.exit(code),
+  (error: unknown) => {
+    process.stderr.write(`${message(error)}\n`);
+    process.exit(1);
+  },
+);

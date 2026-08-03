@@ -8,8 +8,20 @@ Zero runtime dependencies. Fully offline after setup.
 
 ## Run it
 
+Zero to working, from just the executable:
+
 ```bash
-node --experimental-strip-types src/cli.ts recording.m4a --model ~/models/ggml-base.en.bin
+./typescribe setup            # one time, needs network
+./typescribe recording.mp3    # offline from here on
+```
+
+`setup` fetches whisper.cpp and a Whisper model into an install directory, then
+transcription works with no further flags. From source instead of the
+executable:
+
+```bash
+node --experimental-strip-types src/cli.ts setup
+node --experimental-strip-types src/cli.ts recording.mp3
 ```
 
 No build step — Node 22.6+ strips the types at load. `npm start -- <args>` does
@@ -57,23 +69,86 @@ node --experimental-strip-types scripts/build-sea.ts \
 The executable contains typescribe only. `whisper-cli`, the model `.bin`, and
 ffmpeg stay separate files on the machine — see [HARDWARE.md](HARDWARE.md).
 
-## Setup
+## setup
 
-1. **Node 22.6 or newer** — required for `--experimental-strip-types`.
-2. **A local Whisper backend.** Either:
-   - whisper.cpp (fastest on CPU and Apple Silicon):
-     ```bash
-     git clone https://github.com/ggml-org/whisper.cpp
-     cd whisper.cpp && cmake -B build && cmake --build build -j
-     bash models/download-ggml-model.sh base.en
-     ```
-     Put `build/bin/whisper-cli` on `PATH`, then pass `--model models/ggml-base.en.bin`.
-   - or the Python CLI: `pipx install openai-whisper` (also works with
-     `faster-whisper-cli` and `whisperx`).
-3. **ffmpeg** — required only when the input is not already 16 kHz mono WAV.
-   whisper.cpp reads nothing else.
+```
+typescribe setup                       fetch whisper.cpp + base.en, prompt first
+typescribe setup --list                print pinned URLs and digests, fetch nothing
+typescribe setup --model small.en -y   pick a model, skip the prompt
+typescribe setup --verify              re-hash what is installed
+```
 
-Steps 1–3 are the only things that touch the network, and only once. See
+**Install directory** is portable-first: a `typescribe-data` folder beside the
+executable when that location is writable, otherwise the platform user data
+directory (`%LOCALAPPDATA%`, `~/Library/Application Support`,
+`$XDG_DATA_HOME`). `--dir` or `TYPESCRIBE_HOME` override it. Portable-first
+means the executable plus its data folder move as a unit — onto a USB stick, or
+onto a machine that has never been online.
+
+```
+<install-dir>/
+  whisper/          whisper-cli and its shared libraries
+  models/           ggml-<name>.bin
+  installed.json    version, source URL, and digest of each component
+```
+
+A run looks for whisper-cli in the install directory first, then `PATH`, so a
+`setup` install wins over whatever the host happens to have.
+
+**What it will and will not fetch:**
+
+| Component | Fetched | Source | Integrity |
+|---|---|---|---|
+| whisper.cpp v1.9.1 | yes | GitHub release | SHA-256 pinned in `src/manifest.ts` |
+| Whisper model | yes | Hugging Face | trust on first use, recorded for `--verify` |
+| ffmpeg | no | your package manager | — |
+
+The whisper.cpp digests were computed from the published release assets and are
+checked before extraction; a mismatch deletes the partial file and aborts.
+Upstream publishes no signed checksum list for the models, so the first install
+records what it received and `--verify` checks against that recording
+afterwards — that detects later tampering with the local copy, it does not
+authenticate the original download. `--model-sha256` pins it properly if you
+have a digest from another source.
+
+ffmpeg is deliberately not fetched. whisper-cli 1.9+ decodes wav, mp3, ogg, and
+flac itself, so ffmpeg only matters for m4a, aac, opus, and video containers,
+and the available prebuilt static builds come from unofficial third-party
+repositories with no upstream signatures. `setup` reports whether ffmpeg is
+present and prints your platform's install command.
+
+**macOS** has no prebuilt whisper.cpp CLI upstream — only an xcframework, which
+is for embedding. `setup` detects this and prints the two options
+(`brew install whisper-cpp`, or a two-minute cmake build that compiles in Metal
+acceleration), then fetches the model for you.
+
+### Air-gapped install
+
+```bash
+# on a connected machine
+typescribe setup --model small.en -y
+typescribe setup --bundle ./typescribe-bundle
+
+# copy the folder across, then on the offline machine
+typescribe setup --from-bundle ./typescribe-bundle
+```
+
+`--from-bundle` uses no network at all. A `base.en` bundle is about 160 MB;
+whisper.cpp alone is 28 MB.
+
+## Building whisper.cpp yourself
+
+Only needed if you want Metal/CUDA/Vulkan acceleration, or you are on macOS
+where no prebuilt CLI is published.
+
+```bash
+git clone https://github.com/ggml-org/whisper.cpp
+cd whisper.cpp && cmake -B build && cmake --build build -j --config Release
+cp build/bin/whisper-cli <install-dir>/whisper/
+```
+
+Then `typescribe setup --skip-whisper` fetches just the model.
+
 **Offline guarantee** above.
 
 ## Offline guarantee
@@ -90,10 +165,18 @@ network. It transcribes nothing and exits 1 if something is missing.
 
 What backs that up:
 
-1. **typescribe itself has no network capability.** The only `node:` modules
-   imported anywhere are `child_process`, `fs`, `os`, `path`, and `zlib`. No
-   `fetch`, no `node:http`/`https`/`net`/`dns`/`tls`, no HTTP client dependency —
-   there are no runtime dependencies at all.
+1. **Network capability is confined to one file.** `src/net.ts` is the only
+   module that imports `node:https`, and the only module that imports it is
+   `src/setup.ts`. Nothing on the transcription path reaches either, so "does
+   this run touch the network" is answerable by looking at one import edge:
+
+   ```bash
+   grep -rl "node:https\|node:http" src/    # -> src/net.ts
+   grep -rn 'from "./net.ts"' src/           # -> src/setup.ts only
+   ```
+
+   Everything else uses `child_process`, `crypto`, `fs`, `os`, `path`, `zlib`,
+   and `readline`. There are no runtime dependencies at all.
 2. **Running needs no `node_modules`.** `node --experimental-strip-types
    src/cli.ts` runs the TypeScript directly. `npm install` is only for
    `typecheck` and `build`, neither of which is needed to use the tool.
@@ -112,9 +195,9 @@ an explicit `.bin` file path and contains no downloader, so there is nothing to
 suppress. The Python backends work offline too, but the guarantee there rests on
 cache state rather than on the binary lacking the capability.
 
-The one-time setup steps that do need network — cloning whisper.cpp, downloading
-a `.bin` model, installing ffmpeg — are listed under Setup below. Do those once,
-then disconnect.
+`typescribe setup` is the one command that uses the network, and it says so
+before doing anything. Run it once, then disconnect — or skip it entirely with
+`--from-bundle`.
 
 ## What the output looks like
 
@@ -240,6 +323,11 @@ src/typing.ts       word timeline -> scheduled edits with lag and backlog
 src/docx/build.ts   OOXML parts
 src/docx/zip.ts     minimal ZIP writer (node:zlib, no deps)
 src/docx/xml.ts     escaping and OOXML date format
+src/setup.ts        the setup subcommand
+src/manifest.ts     pinned component sources and digests
+src/net.ts          the only file that can reach the network
+src/archive.ts      tar.gz and zip extraction (node:zlib only)
+src/paths.ts        install directory and component resolution
 scripts/build-sea.ts  single-executable build (esbuild -> SEA blob -> postject)
 fixtures/           sample transcripts for testing without a model
 ```

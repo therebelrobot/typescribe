@@ -7,9 +7,10 @@ export interface CliOptions {
   input?: string;
   transcript?: string;
   backend: BackendName | "auto";
-  model: string;
+  model?: string;
   whisperBin?: string;
   modelDir?: string;
+  dir?: string;
   language: string;
   threads?: number;
   allowModelDownload: boolean;
@@ -39,7 +40,6 @@ export interface CliOptions {
 
 const DEFAULTS: CliOptions = {
   backend: "auto",
-  model: "base.en",
   language: "en",
   allowModelDownload: false,
   author: "Live Transcript",
@@ -89,6 +89,7 @@ export function parseArgs(argv: string[]): CliOptions {
       case "--model": options.model = value(); break;
       case "--whisper-bin": options.whisperBin = value(); break;
       case "--model-dir": options.modelDir = value(); break;
+      case "--dir": options.dir = value(); break;
       case "--allow-model-download": options.allowModelDownload = true; break;
       case "--language": options.language = value(); break;
       case "--threads": options.threads = num("--threads"); break;
@@ -166,16 +167,22 @@ export const HELP = `typescribe — audio in, Word document out, with a tracked-
 that reproduces the transcript being typed live against the recording.
 
 USAGE
-  typescribe <audio-file> [options]
+  typescribe setup                          one-time, needs network
+  typescribe <audio-file> [options]         offline from here on
   typescribe --transcript notes.json --start 2026-08-03T09:15:00Z
 
 INPUT
   --transcript <file>     Skip speech-to-text; read an existing .json (whisper.cpp
                           or whisper/faster-whisper), .srt, or .vtt.
   --backend <name>        auto | whisper-cpp | whisper           (default: auto)
-  --model <path|size>     whisper.cpp: path to a ggml .bin model.
-                          whisper: a size name.                  (default: base.en)
+  --model <name|path>     Model name resolved against the install directory
+                          (e.g. base.en), or an explicit file path.
+                          Defaults to whatever setup installed.
   --whisper-bin <path>    Explicit path to the backend binary.
+  --dir <path>            typescribe install directory (where setup put
+                          whisper.cpp and the models).
+                          (default: beside the executable, else the platform
+                          user data directory; TYPESCRIBE_HOME overrides)
   --model-dir <dir>       Where the Python backend looks for weights.
                                           (default: ~/.cache/whisper)
   --allow-model-download  Permit the backend to fetch weights over the
@@ -221,4 +228,99 @@ EXAMPLES
   typescribe interview.m4a --model ~/models/ggml-base.en.bin
   typescribe lecture.wav --chunk word --wpm 55 --timestamps -o lecture.docx
   typescribe --transcript lecture.srt --start "2026-08-03T09:15:00Z" -o lecture.docx
+`;
+
+// ---------------------------------------------------------------------------
+// `typescribe setup`
+// ---------------------------------------------------------------------------
+
+export interface SetupCliOptions {
+  model: string;
+  dir?: string;
+  yes: boolean;
+  list: boolean;
+  verify: boolean;
+  bundle?: string;
+  fromBundle?: string;
+  modelSha256?: string;
+  skipWhisper: boolean;
+  skipModel: boolean;
+  help: boolean;
+}
+
+export function parseSetupArgs(argv: string[]): SetupCliOptions {
+  const options: SetupCliOptions = {
+    model: "base.en",
+    yes: false,
+    list: false,
+    verify: false,
+    skipWhisper: false,
+    skipModel: false,
+    help: false,
+  };
+
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i]!;
+    const value = () => {
+      const next = argv[++i];
+      if (next === undefined) throw new Error(`${arg} requires a value.`);
+      return next;
+    };
+    switch (arg) {
+      case "--model": options.model = value(); break;
+      case "--dir": options.dir = value(); break;
+      case "-y":
+      case "--yes": options.yes = true; break;
+      case "--list": options.list = true; break;
+      case "--verify": options.verify = true; break;
+      case "--bundle": options.bundle = value(); break;
+      case "--from-bundle": options.fromBundle = value(); break;
+      case "--model-sha256": options.modelSha256 = value(); break;
+      case "--skip-whisper": options.skipWhisper = true; break;
+      case "--skip-model": options.skipModel = true; break;
+      case "-h":
+      case "--help": options.help = true; break;
+      default:
+        throw new Error(`Unknown flag for \`setup\`: ${arg}. Run typescribe setup --help.`);
+    }
+  }
+  return options;
+}
+
+export const SETUP_HELP = `typescribe setup — take a bare executable to a working install
+
+USAGE
+  typescribe setup [options]
+
+  Downloads whisper.cpp and a Whisper model into an install directory, then
+  transcription works with no further flags. This is the only command that
+  uses the network.
+
+OPTIONS
+  --model <name>          Model to fetch.                     (default: base.en)
+                          tiny.en base.en small.en medium.en large-v3
+                          large-v3-turbo, and -q5_1 quantized variants.
+  --dir <path>            Install directory. Default is a typescribe-data
+                          folder beside the executable when that is writable,
+                          otherwise the platform user data directory.
+                          TYPESCRIBE_HOME overrides both.
+  -y, --yes               Skip the confirmation prompt.
+  --list                  Print the pinned URLs and digests and exit.
+                          Downloads nothing.
+  --verify                Re-hash what is installed against what was recorded.
+  --model-sha256 <hex>    Pin the model digest instead of trusting on first use.
+  --skip-whisper          Fetch only the model.
+  --skip-model            Fetch only whisper.cpp.
+
+AIR-GAPPED INSTALL
+  --bundle <dir>          On a connected machine: copy this install into <dir>
+                          as a portable folder.
+  --from-bundle <dir>     On the offline machine: install from that folder.
+                          Uses no network.
+
+EXAMPLES
+  typescribe setup --list
+  typescribe setup --model small.en -y
+  typescribe setup --bundle ./typescribe-bundle          # connected machine
+  typescribe setup --from-bundle ./typescribe-bundle     # air-gapped machine
 `;

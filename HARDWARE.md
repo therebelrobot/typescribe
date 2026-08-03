@@ -89,6 +89,29 @@ is a patience problem.
 
 ## Input format
 
-whisper.cpp reads only 16 kHz mono 16-bit WAV. Anything else goes through
-ffmpeg first, which needs temp space equal to roughly 2 MB per minute of audio
-(115 MB for an hour). `--check` reports whether ffmpeg is present.
+whisper-cli 1.9+ decodes **wav, mp3, ogg, and flac** itself, and typescribe
+passes those straight through — no conversion, no temp file. ffmpeg is only
+needed for m4a, aac, opus, and video containers, where conversion uses temp
+space of roughly 2 MB per minute of audio (115 MB for an hour).
+
+WAV that is not already 16 kHz mono still goes through ffmpeg, because
+whisper-cli's own resampling is less careful than ffmpeg's.
+
+`--check` reports whether ffmpeg is present. `typescribe setup` reports it too,
+with the install command for your platform.
+
+## Disk
+
+| | Size |
+|---|---|
+| Executable | ~102 MB (stripped) |
+| whisper.cpp install | 28 MB |
+| Model | 31 MB (`tiny.en-q5_1`) to 3.1 GB (`large-v3`) |
+| Portable folder, `base.en` | ~275 MB |
+| Portable folder, `tiny.en-q5_1` | ~161 MB |
+
+The whisper.cpp install is 28 MB rather than the 9 MB download because the
+release ships a per-microarchitecture CPU backend (`libggml-cpu-haswell.so`,
+`-sapphirerapids`, `-alderlake`, and so on) and picks one at load time. Deleting
+the ones your CPU will not use is safe and saves about 18 MB, but `setup
+--verify` will then report the tree as changed.
